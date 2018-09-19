@@ -52,7 +52,7 @@
 /* connection ttl */
 #define CONN_MAX_TTL 30 /* secs */
 
-/* number of flows to iterate in one step */
+/* number of connections to iterate in one step */
 #define CONN_STEP 100
 
 #define NUM_WORKERS 4
@@ -217,7 +217,7 @@ worker_init(struct worker *worker)
 		rte_exit(EXIT_FAILURE, "lcore %u failed to create timer mempool",
 				  rte_lcore_id());
 
-	/* init flows */
+	/* init connections */
 	for (i = 0; i < WORKER_CONNS; i++)
 		worker->conns[i].key_index = EMPTY_KEY_IND; /* empty */
 
@@ -253,7 +253,7 @@ worker_timer_put(struct worker *worker, struct rte_timer *timer)
 }
 
 /*
- * Add new flow to the workers flows
+ * Indicate worker to add new connections
  */
 static void
 new_conn_timer_cb(struct rte_timer *unused, void *data)
@@ -315,22 +315,22 @@ th_delete(uint8_t *key)
 
 
 /*
- * Delete a flow.
- * Just mark it's index as EMPTY_KEY_IND
+ * Delete a worker connection
+ * Just mark its index as EMPTY_KEY_IND
  */
 static void
 conn_ttl_timer_cb(struct rte_timer *timer, void *data)
 {
 	struct worker *worker;
-	uint32_t fl_ind;
+	uint32_t conn_ind;
 	uint8_t *key;
 
 	worker = &g_workers[rte_lcore_id()];
-	fl_ind = (uint32_t)(uintptr_t) data;
-	assert(fl_ind < WORKER_CONNS);
+	conn_ind = (uint32_t)(uintptr_t) data;
+	assert(conn_ind < WORKER_CONNS);
 
-	/* delete flow's key from conndb */
-	key = &g_keys[worker->conns[fl_ind].key_index * g_key_size];
+	/* delete connection key from conndb */
+	key = &g_keys[worker->conns[conn_ind].key_index * g_key_size];
 
 	if (g_hash_engine == HASH_CUCKOO)
 		cuckoo_delete(key);
@@ -340,11 +340,10 @@ conn_ttl_timer_cb(struct rte_timer *timer, void *data)
 	/* mark connection slot as empty,
 	 * stop and free timer
 	 */
-	worker->conns[fl_ind].key_index = EMPTY_KEY_IND;
+	worker->conns[conn_ind].key_index = EMPTY_KEY_IND;
 	rte_timer_stop(timer);
 	worker_timer_put(worker, timer);
-
-	// printf("lcore %u deleted flow %u\n", rte_lcore_id(), fl_ind);
+	// printf("lcore %u deleted connection %u\n", rte_lcore_id(), conn_ind);
 }
 
 /*
@@ -391,7 +390,7 @@ worker(__attribute__((unused)) void *dummy) {
 		if (tm2 - tm1 > (uint64_t) TEST_TIME * MS_PER_S)
 			break;
 
-		/* iterate next N flows and execute conndb operation on them */
+		/* iterate next N connections and execute conndb operation on them */
 		i = 0;
 		while (true) {
 			/* run timers */
@@ -402,7 +401,7 @@ worker(__attribute__((unused)) void *dummy) {
 
 			if (conns[conn_ind].key_index == EMPTY_KEY_IND) {
 				if (worker->nb_conn_to_add > 0) {
-					/* add new flow */
+					/* add new connection */
 					conns[conn_ind].key_index = rte_rand() % g_num_keys;
 					conns[conn_ind].opi = OPI_MIN + (rte_rand() % (OPI_MAX - OPI_MIN));
 					/* start the Time To Live timer for a new connection */
@@ -414,12 +413,12 @@ worker(__attribute__((unused)) void *dummy) {
 					rte_timer_reset(conn_ttl_timer, tics, SINGLE, rte_lcore_id(),
 							  conn_ttl_timer_cb, (void *)(uintptr_t) conn_ind);
 
-					/* flow has been added */
+					/* connection has been added */
 					worker->nb_conn_to_add--;
 				}
 			}
 			else {
-				/* execute conndb operations with the flow's key */
+				/* execute conndb operations with the connection key */
 				for (j = 0; j < conns[conn_ind].opi; j++) {
 					/* lookup the connection key OPI times.
 					 * if lookup miss add the connection key
@@ -434,16 +433,16 @@ worker(__attribute__((unused)) void *dummy) {
 
 			i++;
 			if (i == CONN_STEP && worker->nb_conn_to_add == 0)
-				/* step is completed and no need to add new flow */
+				/* step is completed and no need to add new connections */
 				break;
 			/* else
-			 *		continue unnless we have added all new flows  */
+			 *		continue unnless we have added all new connections  */
 
 			if (i == WORKER_CONNS)
-				/* all flows has been checked, no empty slot */
+				/* all worker connections slots has been checked, no empty slot */
 				break;
 
-			/* start from the first flow when the last flow is handled */
+			/* start from the first connection */
 			if (++conn_ind == WORKER_CONNS)
 				conn_ind = 0;
 		}
