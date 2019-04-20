@@ -65,7 +65,7 @@
 /* conndb storage type */
 #define HASH_CUCKOO 1
 #define HASH_TH 2
-uint8_t g_hash_engine = HASH_CUCKOO;
+uint8_t g_hash_engine = HASH_TH;
 
 void
 timespec_diff(struct timespec *start, struct timespec *stop,
