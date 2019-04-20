@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <rte_branch_prediction.h>
+#include <string.h>
 
 #include "cuckoo/cuckoohash_map.hh"
 #include "city.h"
@@ -40,7 +41,7 @@ npf_conn_map_init(void) {
 
 void 
 npf_conn_map_fini(void *map) {
-	con_map_t* cmap = map;
+	con_map_t* cmap = (con_map_t *)map;
 	
 	delete cmap;
 }
@@ -54,16 +55,9 @@ operator==(const npf_connkey_ipv4_t& ck1, const npf_connkey_ipv4_t& ck2)
 	return ret == 0 ? true : false;
 }
 
-size_t npf_conn_map_hash(void* map, const npf_connkey_ipv4_t *key) 
-{
-	con_map_t* cmap = map;
-	
-	return cmap->key_hash(*key);
-}
-
 uint64_t npf_conn_map_size(void *map) 
 {
-	con_map_t *cmap = map;
+	con_map_t *cmap = (con_map_t *)map;
 	
 	return cmap->size();
 }
@@ -71,7 +65,7 @@ uint64_t npf_conn_map_size(void *map)
 void *
 npf_conn_map_lookup(void *map, const npf_connkey_ipv4_t *key, const size_t hv)
 {
-	con_map_t *cmap = map;
+	con_map_t *cmap = (con_map_t *)map;
 	void *con;
 	
 	return cmap->find(*key, con) ? con : NULL;
@@ -98,6 +92,6 @@ npf_conn_map_remove(void *map, const npf_connkey_ipv4_t *key, const size_t hv)
 {
 	con_map_t *cmap = (con_map_t *)map;
 	
-	cmap->erase(*key, hv);
+	cmap->erase(*key);
 	return NULL;
 }
